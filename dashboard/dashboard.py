@@ -165,4 +165,4 @@ ax.grid(True, linestyle='--', alpha=0.6)
 
 st.pyplot(fig)
 
-st.caption('Dashboard oleh Fajar Nurhidayat')
+st.caption('Dashboard oleh Fajar Nurhidaya')
