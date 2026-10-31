@@ -10,11 +10,6 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 # Gabungkan lokasi direktori tersebut dengan nama file CSV
 file_path = os.path.join(current_dir, "hour.csv")
 
-# Baca file CSV menggunakan path yang sudah digabungkan
-all_df = pd.read_csv(file_path)
-
-
-
 # Mengatur style seaborn
 sns.set_theme(style='darkgrid')
 
@@ -42,7 +37,7 @@ def create_by_hour_df(df):
 
 
 # Memuat dan preprocessing data
-all_df = pd.read_csv("hour.csv")
+all_df = pd.read_csv(file_path)
 
 all_df["dteday"] = pd.to_datetime(all_df["dteday"])
 all_df.sort_values(by="dteday", inplace=True)
