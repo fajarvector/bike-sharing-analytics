@@ -59,17 +59,27 @@ all_df["season_label"] = all_df["season"].map(season_mapping)
 min_date = all_df["dteday"].min()
 max_date = all_df["dteday"].max()
 
+Python
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/2972/2972185.png", width=100)
     st.title("Capital Bikeshare")
     
-    start_date, end_date = st.date_input(
+    # Menerima input tanggal
+    date_input = st.date_input(
         label='Rentang Waktu',
         min_value=min_date,
         max_value=max_date,
         value=[min_date, max_date]
     )
+    
+    # Try-Except block sesuai saran reviewer
+    try:
+        start_date, end_date = date_input
+    except ValueError:
+        st.error("Peringatan: Harap pilih tanggal akhir (End Date) untuk melanjutkan.")
+        st.stop() # Menghentikan eksekusi kode di bawahnya hingga user memilih 2 tanggal
 
+# (Kode main_df filtering tetap berada di bawahnya)
 main_df = all_df[(all_df["dteday"] >= pd.to_datetime(start_date)) & 
                  (all_df["dteday"] <= pd.to_datetime(end_date))]
 
@@ -139,20 +149,34 @@ except (IndexError, ZeroDivisionError):
     drop_casual, drop_reg = 0, 0
 
 col1, col2 = st.columns(2)
-col1.metric("Perbedaan Casual (Cerah vs Cuaca Buruk)", f"-{drop_casual:.1f}%", delta_color="inverse")
-col2.metric("Perbedaan Registered (Cerah vs Cuaca Buruk)", f"-{drop_reg:.1f}%", delta_color="inverse")
+col1.metric("Penurunan Casual (Cerah vs Cuaca Buruk)", f"-{drop_casual:.1f}%", delta_color="inverse")
+col2.metric("Penurunan Registered (Cerah vs Cuaca Buruk)", f"-{drop_reg:.1f}%", delta_color="inverse")
 
-weather_melt = weather_impact_df.melt(id_vars=['weather_group'], value_vars=['casual', 'registered'], var_name='Tipe Pengguna', value_name='Rata-rata Sewa per Jam')
+# Melt data agar formatnya persis dengan visualisasi seaborn di Notebook
+weather_melt = weather_impact_df.melt(
+    id_vars=['weather_group'], 
+    value_vars=['casual', 'registered'], 
+    var_name='Tipe Pengguna', 
+    value_name='Rata-rata Sewa per Jam'
+)
 
-fig2, ax2 = plt.subplots(figsize=(16, 8))
-sns.barplot(data=weather_melt, x='weather_group', y='Rata-rata Sewa per Jam', hue='Tipe Pengguna', palette=["#90CAF9", "#FF9F00"], order=['Cerah', 'Mendung/Berkabut', 'Cuaca Buruk'], ax=ax2)
-ax2.set_title("Rata-rata Penyewaan per Jam Berdasarkan Cuaca", fontsize=20)
-ax2.set_xlabel("Kondisi Cuaca", fontsize=15)
-ax2.set_ylabel("Rata-rata Peminjaman per Jam", fontsize=15)
+fig2, ax2 = plt.subplots(figsize=(12, 6))
+# Order dipastikan sama persis dengan Notebook
+sns.barplot(
+    data=weather_melt, 
+    x='weather_group', 
+    y='Rata-rata Sewa per Jam', 
+    hue='Tipe Pengguna', 
+    palette=["#90CAF9", "#FF9F00"], 
+    order=['Cerah', 'Mendung/Berkabut', 'Cuaca Buruk'], 
+    ax=ax2
+)
+ax2.set_title("Rata-rata Penyewaan per Jam (Cerah vs Cuaca Buruk)", fontsize=16)
+ax2.set_xlabel("Kondisi Cuaca", fontsize=12)
+ax2.set_ylabel("Rata-rata Peminjaman per Jam", fontsize=12)
 st.pyplot(fig2)
 
 st.info("**Bahan Pertimbangan:** Terdapat perbedaan rata-rata yang lebih signifikan pada pengguna *casual* saat cuaca buruk. Ini dapat menjadi acuan strategi operasional spesifik saat cuaca berubah.")
-st.divider()
 
 # -----------------------------------------------------------
 # 3. PERTANYAAN 3
