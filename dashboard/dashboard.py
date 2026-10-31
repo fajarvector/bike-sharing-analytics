@@ -4,51 +4,54 @@ import seaborn as sns
 import streamlit as st
 import os
 
-# Dapatkan lokasi direktori tempat file dashboard.py berada
 current_dir = os.path.dirname(os.path.abspath(__file__))
-
-# Gabungkan lokasi direktori tersebut dengan nama file CSV
 file_path = os.path.join(current_dir, "hour.csv")
 
 # Mengatur style seaborn
 sns.set_theme(style='darkgrid')
 
+# Helper Functions (Agregasi Groupby)
 def create_daily_sharing_df(df):
-    daily_df = df.groupby(by='dteday').agg({
+    return df.groupby(by='dteday').agg({
         "cnt": "sum",
         "casual": "sum",
         "registered": "sum"
     }).reset_index()
-    return daily_df
 
-def create_by_season_df(df):
-    season_df = df.groupby(by="season_label")['cnt'].sum().reset_index()
-    season_df = season_df.sort_values(by="cnt", ascending=False)
-    return season_df
+def create_hourly_workday_df(df):
+    return df.groupby(by=['workingday', 'hr'])['cnt'].mean().reset_index()
 
-def create_by_weather_df(df):
-    weather_df = df.groupby(by="weather_label")['cnt'].sum().reset_index()
-    weather_df = weather_df.sort_values(by="cnt", ascending=False)
-    return weather_df
+def create_weather_impact_df(df):
+    # Gabungkan kategori 3 dan 4 menjadi 'Cuaca Buruk'
+    def group_weather(w):
+        if w == 1:
+            return 'Cerah'
+        elif w == 2:
+            return 'Mendung/Berkabut'
+        else:
+            return 'Cuaca Buruk'
+    
+    df_copy = df.copy()
+    df_copy['weather_group'] = df_copy['weathersit'].apply(group_weather)
+    return df_copy.groupby(by=['weather_group'])[['casual', 'registered', 'cnt']].mean().reset_index()
 
-def create_by_hour_df(df):
-    hourly_df = df.groupby(by="hr")['cnt'].mean().reset_index()
-    return hourly_df
+def create_season_yr_df(df):
+    return df.groupby(by=['yr', 'season_label'])['cnt'].sum().reset_index()
 
+def get_lowest_season(df):
+    daily_season = df.groupby(['dteday', 'season_label'])['cnt'].sum().reset_index()
+    if not daily_season.empty:
+        return daily_season.groupby('season_label')['cnt'].mean().idxmin()
+    return "-"
 
 # Memuat dan preprocessing data
 all_df = pd.read_csv(file_path)
-
 all_df["dteday"] = pd.to_datetime(all_df["dteday"])
 all_df.sort_values(by="dteday", inplace=True)
 all_df.reset_index(drop=True, inplace=True)
 
 season_mapping = {1: "Spring", 2: "Summer", 3: "Fall", 4: "Winter"}
-weather_mapping = {1: "Clear", 2: "Cloudy/Mist", 3: "Light Rain/Snow", 4: "Heavy Rain/Snow"}
-
 all_df["season_label"] = all_df["season"].map(season_mapping)
-all_df["weather_label"] = all_df["weathersit"].map(weather_mapping)
-
 
 # Side bar dan filter
 min_date = all_df["dteday"].min()
@@ -68,12 +71,15 @@ with st.sidebar:
 main_df = all_df[(all_df["dteday"] >= pd.to_datetime(start_date)) & 
                  (all_df["dteday"] <= pd.to_datetime(end_date))]
 
+# Eksekusi Agregasi Data Utama
 daily_sharing_df = create_daily_sharing_df(main_df)
-season_df = create_by_season_df(main_df)
-weather_df = create_by_weather_df(main_df)
-hourly_df = create_by_hour_df(main_df)
+hourly_workday_df = create_hourly_workday_df(main_df)
+weather_impact_df = create_weather_impact_df(main_df)
+season_yr_df = create_season_yr_df(main_df)
 
-# Dashboard dan Main Page
+
+# DASHBOARD MAIN PAGE
+
 st.header('Bike Sharing Analytics Dashboard 🚲')
 
 st.subheader('Daily Rentals Summary')
@@ -82,87 +88,123 @@ col1, col2, col3 = st.columns(3)
 with col1:
     total_rentals = daily_sharing_df['cnt'].sum()
     st.metric("Total Rides", value=f"{total_rentals:,}")
-
 with col2:
     total_registered = daily_sharing_df['registered'].sum()
     st.metric("Registered Users", value=f"{total_registered:,}")
-
 with col3:
     total_casual = daily_sharing_df['casual'].sum()
     st.metric("Casual Users", value=f"{total_casual:,}")
 
-st.subheader("Daily Rentals Trend")
-fig, ax = plt.subplots(figsize=(16, 8))
-ax.plot(
-    daily_sharing_df["dteday"],
-    daily_sharing_df["cnt"],
-    marker='o', 
-    linewidth=2,
-    color="#90CAF9"
-)
-ax.set_title("Total Bike Rentals Over Time", fontsize=20)
-ax.tick_params(axis='y', labelsize=15)
-ax.tick_params(axis='x', labelsize=15)
-st.pyplot(fig)
+st.divider()
 
-st.subheader("Rentals by Season & Weather")
+
+# 1. PERTANYAAN 1: Pola Jam Sibuk (Hari Kerja vs Akhir Pekan)
+
+st.subheader("1. Analisis Jam Sibuk: Hari Kerja vs Akhir Pekan")
+
+workday_df = hourly_workday_df[hourly_workday_df['workingday'] == 1]
+weekend_df = hourly_workday_df[hourly_workday_df['workingday'] == 0]
+
+peak_workday = workday_df.loc[workday_df['cnt'].idxmax(), 'hr'] if not workday_df.empty else 0
+peak_weekend = weekend_df.loc[weekend_df['cnt'].idxmax(), 'hr'] if not weekend_df.empty else 0
+
 col1, col2 = st.columns(2)
+col1.metric("Jam Puncak (Hari Kerja)", f"{int(peak_workday)}:00 WIB")
+col2.metric("Jam Puncak (Akhir Pekan)", f"{int(peak_weekend)}:00 WIB")
 
-colors = ["#90CAF9", "#D3D3D3", "#D3D3D3", "#D3D3D3"]
-
-with col1:
-    fig, ax = plt.subplots(figsize=(10, 6))
-    sns.barplot(
-        y="cnt", 
-        x="season_label",
-        data=season_df,
-        palette=colors,
-        ax=ax
-    )
-    ax.set_title("Number of Rentals by Season", loc="center", fontsize=20)
-    ax.set_ylabel(None)
-    ax.set_xlabel(None)
-    ax.tick_params(axis='x', labelsize=15)
-    ax.tick_params(axis='y', labelsize=12)
-    st.pyplot(fig)
-
-with col2:
-    fig, ax = plt.subplots(figsize=(10, 6))
-    sns.barplot(
-        y="cnt", 
-        x="weather_label",
-        data=weather_df,
-        palette=colors,
-        ax=ax
-    )
-    ax.set_title("Number of Rentals by Weather", loc="center", fontsize=20)
-    ax.set_ylabel(None)
-    ax.set_xlabel(None)
-    ax.tick_params(axis='x', labelsize=12)
-    ax.tick_params(axis='y', labelsize=12)
-    st.pyplot(fig)
-
-st.subheader("Average Hourly Rentals")
-fig, ax = plt.subplots(figsize=(16, 8))
+fig1, ax1 = plt.subplots(figsize=(16, 8))
 sns.lineplot(
-    x="hr",
-    y="cnt",
-    data=hourly_df,
-    marker="o",
-    linewidth=3,
-    color="#FF9F00",
-    ax=ax
+    x="hr", y="cnt", hue="workingday", 
+    data=hourly_workday_df, marker="o", linewidth=3, 
+    palette=["#FF9F00", "#90CAF9"], ax=ax1
 )
-ax.set_title("Peak Hours Analysis", loc="center", fontsize=20)
-ax.set_ylabel("Average Rentals", fontsize=15)
-ax.set_xlabel("Hour of the Day (0-23)", fontsize=15)
-ax.set_xticks(range(0, 24))
-ax.tick_params(axis='x', labelsize=12)
-ax.tick_params(axis='y', labelsize=12)
+ax1.set_title("Perbandingan Rata-rata Peminjaman per Jam", fontsize=20)
+ax1.set_ylabel("Rata-rata Penyewaan", fontsize=15)
+ax1.set_xlabel("Jam Operasi (0-23)", fontsize=15)
+ax1.set_xticks(range(0, 24))
+plt.legend(title='Keterangan', labels=['Akhir Pekan/Libur', 'Hari Kerja'], fontsize=12)
+ax1.grid(True, linestyle='--', alpha=0.6)
+st.pyplot(fig1)
 
-# Grid
-ax.grid(True, linestyle='--', alpha=0.6)
+st.info(f"**Rekomendasi Bisnis:** Lakukan redistribusi sepeda secara massal sebelum pukul **{int(peak_workday)}:00** pada hari kerja dan sebelum pukul **{int(peak_weekend)}:00** pada hari libur untuk memastikan ketersediaan armada di stasiun-stasiun padat komuter.")
 
-st.pyplot(fig)
+st.divider()
+
+
+# 2. PERTANYAAN 2: Dampak Cuaca (Casual vs Registered)
+
+st.subheader("2. Penurunan Sewa Saat Cuaca Buruk (Casual vs Registered)")
+
+# Kalkulasi Drop Cuaca Cerah vs Cuaca Buruk (Kategori 3 & 4)
+try:
+    val_clear_casual = weather_impact_df[weather_impact_df['weather_group'] == 'Cerah']['casual'].values[0]
+    val_bad_casual = weather_impact_df[weather_impact_df['weather_group'] == 'Cuaca Buruk']['casual'].values[0]
+    drop_casual = ((val_clear_casual - val_bad_casual) / val_clear_casual) * 100
+    
+    val_clear_reg = weather_impact_df[weather_impact_df['weather_group'] == 'Cerah']['registered'].values[0]
+    val_bad_reg = weather_impact_df[weather_impact_df['weather_group'] == 'Cuaca Buruk']['registered'].values[0]
+    drop_reg = ((val_clear_reg - val_bad_reg) / val_clear_reg) * 100
+except (IndexError, ZeroDivisionError):
+    drop_casual, drop_reg = 0, 0
+
+col1, col2 = st.columns(2)
+col1.metric("Sensitivitas Casual (Drop saat Cuaca Buruk)", f"-{drop_casual:.1f}%", delta_color="inverse")
+col2.metric("Sensitivitas Registered (Drop saat Cuaca Buruk)", f"-{drop_reg:.1f}%", delta_color="inverse")
+
+weather_melt = weather_impact_df.melt(
+    id_vars=['weather_group'], 
+    value_vars=['casual', 'registered'], 
+    var_name='Tipe Pengguna', value_name='Rata-rata Sewa per Jam'
+)
+
+fig2, ax2 = plt.subplots(figsize=(16, 8))
+sns.barplot(
+    data=weather_melt, x='weather_group', y='Rata-rata Sewa per Jam', 
+    hue='Tipe Pengguna', palette=["#90CAF9", "#FF9F00"], 
+    order=['Cerah', 'Mendung/Berkabut', 'Cuaca Buruk'], ax=ax2
+)
+ax2.set_title("Rata-rata Penyewaan per Jam Berdasarkan Cuaca dan Tipe Pengguna", fontsize=20)
+ax2.set_xlabel("Kondisi Cuaca", fontsize=15)
+ax2.set_ylabel("Rata-rata Peminjaman per Jam", fontsize=15)
+ax2.tick_params(axis='x', labelsize=12)
+ax2.tick_params(axis='y', labelsize=12)
+st.pyplot(fig2)
+
+st.info("**Insight:** Pengguna tipe *casual* sangat sensitif terhadap cuaca buruk dibandingkan *registered*. Strategi promosi tarif kilat dapat ditargetkan secara spesifik pada akun *casual* saat cuaca mulai memburuk.")
+
+st.divider()
+
+
+# 3. PERTANYAAN 3: Pertumbuhan Musim & Jadwal Perbaikan Armada
+
+st.subheader("3. Tren Pertumbuhan Musiman & Rekomendasi Maintenance")
+
+try:
+    total_2011 = season_yr_df[season_yr_df['yr'] == 0]['cnt'].sum()
+    total_2012 = season_yr_df[season_yr_df['yr'] == 1]['cnt'].sum()
+    growth = ((total_2012 - total_2011) / total_2011) * 100
+except (IndexError, ZeroDivisionError):
+    growth = 0
+
+lowest_season_name = get_lowest_season(main_df)
+
+col1, col2 = st.columns(2)
+col1.metric("Pertumbuhan Volume (2011 ke 2012)", f"+{growth:.1f}%")
+col2.metric("Rekomendasi Musim Perbaikan (Low-Risk)", lowest_season_name)
+
+season_yr_df['Tahun'] = season_yr_df['yr'].map({0: '2011', 1: '2012'})
+fig3, ax3 = plt.subplots(figsize=(16, 8))
+sns.barplot(
+    data=season_yr_df, x='season_label', y='cnt', 
+    hue='Tahun', palette=["#D3D3D3", "#90CAF9"], ax=ax3
+)
+ax3.set_title("Total Penyewaan per Musim (Perbandingan Tahun)", fontsize=20)
+ax3.set_xlabel("Musim", fontsize=15)
+ax3.set_ylabel("Total Penyewaan", fontsize=15)
+ax3.tick_params(axis='x', labelsize=12)
+ax3.tick_params(axis='y', labelsize=12)
+st.pyplot(fig3)
+
+st.info(f"**Rekomendasi Bisnis:** Mengingat pertumbuhan total penyewaan terus meningkat, perbaikan dan inspeksi armada massal sebaiknya difokuskan pada musim **{lowest_season_name}** karena memiliki volume peminjaman terendah. Ini akan menekan potensi *lost revenue*.")
 
 st.caption('Dashboard oleh Fajar Nurhidayat')
