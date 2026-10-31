@@ -4,13 +4,14 @@ import seaborn as sns
 import streamlit as st
 import os
 
+# Dapatkan lokasi direktori tempat file dashboard.py berada
 current_dir = os.path.dirname(os.path.abspath(__file__))
 file_path = os.path.join(current_dir, "hour.csv")
 
 # Mengatur style seaborn
 sns.set_theme(style='darkgrid')
 
-# Helper Functions (Agregasi Groupby)
+# Helper Functions
 def create_daily_sharing_df(df):
     return df.groupby(by='dteday').agg({
         "cnt": "sum",
@@ -22,7 +23,6 @@ def create_hourly_workday_df(df):
     return df.groupby(by=['workingday', 'hr'])['cnt'].mean().reset_index()
 
 def create_weather_impact_df(df):
-    # Gabungkan kategori 3 dan 4 menjadi 'Cuaca Buruk'
     def group_weather(w):
         if w == 1:
             return 'Cerah'
@@ -30,13 +30,13 @@ def create_weather_impact_df(df):
             return 'Mendung/Berkabut'
         else:
             return 'Cuaca Buruk'
-    
     df_copy = df.copy()
     df_copy['weather_group'] = df_copy['weathersit'].apply(group_weather)
     return df_copy.groupby(by=['weather_group'])[['casual', 'registered', 'cnt']].mean().reset_index()
 
 def create_season_yr_df(df):
-    return df.groupby(by=['yr', 'season_label'])['cnt'].sum().reset_index()
+    # Menggunakan mean (rata-rata harian) sesuai permintaan reviewer
+    return df.groupby(by=['yr', 'season_label'])['cnt'].mean().reset_index()
 
 def get_lowest_season(df):
     daily_season = df.groupby(['dteday', 'season_label'])['cnt'].sum().reset_index()
@@ -71,36 +71,31 @@ with st.sidebar:
 main_df = all_df[(all_df["dteday"] >= pd.to_datetime(start_date)) & 
                  (all_df["dteday"] <= pd.to_datetime(end_date))]
 
-# Eksekusi Agregasi Data Utama
+# Eksekusi Agregasi Data
 daily_sharing_df = create_daily_sharing_df(main_df)
 hourly_workday_df = create_hourly_workday_df(main_df)
 weather_impact_df = create_weather_impact_df(main_df)
 season_yr_df = create_season_yr_df(main_df)
 
-
+# ==========================================
 # DASHBOARD MAIN PAGE
-
+# ==========================================
 st.header('Bike Sharing Analytics Dashboard 🚲')
 
 st.subheader('Daily Rentals Summary')
 col1, col2, col3 = st.columns(3)
-
 with col1:
-    total_rentals = daily_sharing_df['cnt'].sum()
-    st.metric("Total Rides", value=f"{total_rentals:,}")
+    st.metric("Total Rides", value=f"{daily_sharing_df['cnt'].sum():,}")
 with col2:
-    total_registered = daily_sharing_df['registered'].sum()
-    st.metric("Registered Users", value=f"{total_registered:,}")
+    st.metric("Registered Users", value=f"{daily_sharing_df['registered'].sum():,}")
 with col3:
-    total_casual = daily_sharing_df['casual'].sum()
-    st.metric("Casual Users", value=f"{total_casual:,}")
-
+    st.metric("Casual Users", value=f"{daily_sharing_df['casual'].sum():,}")
 st.divider()
 
-
-# 1. PERTANYAAN 1: Pola Jam Sibuk (Hari Kerja vs Akhir Pekan)
-
-st.subheader("1. Analisis Jam Sibuk: Hari Kerja vs Akhir Pekan")
+# -----------------------------------------------------------
+# 1. PERTANYAAN 1
+# -----------------------------------------------------------
+st.subheader("1. Rata-rata Penyewaan per Jam (Hari Kerja vs Libur 2011-2012)")
 
 workday_df = hourly_workday_df[hourly_workday_df['workingday'] == 1]
 weekend_df = hourly_workday_df[hourly_workday_df['workingday'] == 0]
@@ -109,15 +104,11 @@ peak_workday = workday_df.loc[workday_df['cnt'].idxmax(), 'hr'] if not workday_d
 peak_weekend = weekend_df.loc[weekend_df['cnt'].idxmax(), 'hr'] if not weekend_df.empty else 0
 
 col1, col2 = st.columns(2)
-col1.metric("Jam Puncak (Hari Kerja)", f"{int(peak_workday)}:00 WIB")
-col2.metric("Jam Puncak (Akhir Pekan)", f"{int(peak_weekend)}:00 WIB")
+col1.metric("Volume Tertinggi (Hari Kerja)", f"{int(peak_workday)}:00 WIB")
+col2.metric("Volume Tertinggi (Akhir Pekan)", f"{int(peak_weekend)}:00 WIB")
 
 fig1, ax1 = plt.subplots(figsize=(16, 8))
-sns.lineplot(
-    x="hr", y="cnt", hue="workingday", 
-    data=hourly_workday_df, marker="o", linewidth=3, 
-    palette=["#FF9F00", "#90CAF9"], ax=ax1
-)
+sns.lineplot(x="hr", y="cnt", hue="workingday", data=hourly_workday_df, marker="o", linewidth=3, palette=["#FF9F00", "#90CAF9"], ax=ax1)
 ax1.set_title("Perbandingan Rata-rata Peminjaman per Jam", fontsize=20)
 ax1.set_ylabel("Rata-rata Penyewaan", fontsize=15)
 ax1.set_xlabel("Jam Operasi (0-23)", fontsize=15)
@@ -126,16 +117,14 @@ plt.legend(title='Keterangan', labels=['Akhir Pekan/Libur', 'Hari Kerja'], fonts
 ax1.grid(True, linestyle='--', alpha=0.6)
 st.pyplot(fig1)
 
-st.info(f"**Rekomendasi Bisnis:** Lakukan redistribusi sepeda secara massal sebelum pukul **{int(peak_workday)}:00** pada hari kerja dan sebelum pukul **{int(peak_weekend)}:00** pada hari libur untuk memastikan ketersediaan armada di stasiun-stasiun padat komuter.")
-
+st.info(f"**Bahan Pertimbangan:** Data historis menunjukkan jam puncak terjadi pada pukul {int(peak_workday)}:00 di hari kerja. Penjadwalan redistribusi armada dapat difokuskan sebelum jam tersebut.")
 st.divider()
 
+# -----------------------------------------------------------
+# 2. PERTANYAAN 2
+# -----------------------------------------------------------
+st.subheader("2. Perbedaan Rata-rata Sewa per Jam Berdasarkan Cuaca (2011-2012)")
 
-# 2. PERTANYAAN 2: Dampak Cuaca (Casual vs Registered)
-
-st.subheader("2. Penurunan Sewa Saat Cuaca Buruk (Casual vs Registered)")
-
-# Kalkulasi Drop Cuaca Cerah vs Cuaca Buruk (Kategori 3 & 4)
 try:
     val_clear_casual = weather_impact_df[weather_impact_df['weather_group'] == 'Cerah']['casual'].values[0]
     val_bad_casual = weather_impact_df[weather_impact_df['weather_group'] == 'Cuaca Buruk']['casual'].values[0]
@@ -148,63 +137,47 @@ except (IndexError, ZeroDivisionError):
     drop_casual, drop_reg = 0, 0
 
 col1, col2 = st.columns(2)
-col1.metric("Sensitivitas Casual (Drop saat Cuaca Buruk)", f"-{drop_casual:.1f}%", delta_color="inverse")
-col2.metric("Sensitivitas Registered (Drop saat Cuaca Buruk)", f"-{drop_reg:.1f}%", delta_color="inverse")
+col1.metric("Perbedaan Casual (Cerah vs Cuaca Buruk)", f"-{drop_casual:.1f}%", delta_color="inverse")
+col2.metric("Perbedaan Registered (Cerah vs Cuaca Buruk)", f"-{drop_reg:.1f}%", delta_color="inverse")
 
-weather_melt = weather_impact_df.melt(
-    id_vars=['weather_group'], 
-    value_vars=['casual', 'registered'], 
-    var_name='Tipe Pengguna', value_name='Rata-rata Sewa per Jam'
-)
+weather_melt = weather_impact_df.melt(id_vars=['weather_group'], value_vars=['casual', 'registered'], var_name='Tipe Pengguna', value_name='Rata-rata Sewa per Jam')
 
 fig2, ax2 = plt.subplots(figsize=(16, 8))
-sns.barplot(
-    data=weather_melt, x='weather_group', y='Rata-rata Sewa per Jam', 
-    hue='Tipe Pengguna', palette=["#90CAF9", "#FF9F00"], 
-    order=['Cerah', 'Mendung/Berkabut', 'Cuaca Buruk'], ax=ax2
-)
-ax2.set_title("Rata-rata Penyewaan per Jam Berdasarkan Cuaca dan Tipe Pengguna", fontsize=20)
+sns.barplot(data=weather_melt, x='weather_group', y='Rata-rata Sewa per Jam', hue='Tipe Pengguna', palette=["#90CAF9", "#FF9F00"], order=['Cerah', 'Mendung/Berkabut', 'Cuaca Buruk'], ax=ax2)
+ax2.set_title("Rata-rata Penyewaan per Jam Berdasarkan Cuaca", fontsize=20)
 ax2.set_xlabel("Kondisi Cuaca", fontsize=15)
 ax2.set_ylabel("Rata-rata Peminjaman per Jam", fontsize=15)
-ax2.tick_params(axis='x', labelsize=12)
-ax2.tick_params(axis='y', labelsize=12)
 st.pyplot(fig2)
 
-st.info("**Insight:** Pengguna tipe *casual* sangat sensitif terhadap cuaca buruk dibandingkan *registered*. Strategi promosi tarif kilat dapat ditargetkan secara spesifik pada akun *casual* saat cuaca mulai memburuk.")
-
+st.info("**Bahan Pertimbangan:** Terdapat perbedaan rata-rata yang lebih signifikan pada pengguna *casual* saat cuaca buruk. Ini dapat menjadi acuan strategi operasional spesifik saat cuaca berubah.")
 st.divider()
 
-
-# 3. PERTANYAAN 3: Pertumbuhan Musim & Jadwal Perbaikan Armada
-
-st.subheader("3. Tren Pertumbuhan Musiman & Rekomendasi Maintenance")
+# -----------------------------------------------------------
+# 3. PERTANYAAN 3
+# -----------------------------------------------------------
+st.subheader("3. Pertumbuhan Rata-rata Harian per Musim (2011 vs 2012)")
 
 try:
-    total_2011 = season_yr_df[season_yr_df['yr'] == 0]['cnt'].sum()
-    total_2012 = season_yr_df[season_yr_df['yr'] == 1]['cnt'].sum()
-    growth = ((total_2012 - total_2011) / total_2011) * 100
+    avg_2011 = season_yr_df[season_yr_df['yr'] == 0]['cnt'].mean()
+    avg_2012 = season_yr_df[season_yr_df['yr'] == 1]['cnt'].mean()
+    growth = ((avg_2012 - avg_2011) / avg_2011) * 100
 except (IndexError, ZeroDivisionError):
     growth = 0
 
 lowest_season_name = get_lowest_season(main_df)
 
 col1, col2 = st.columns(2)
-col1.metric("Pertumbuhan Volume (2011 ke 2012)", f"+{growth:.1f}%")
-col2.metric("Rekomendasi Musim Perbaikan (Low-Risk)", lowest_season_name)
+col1.metric("Peningkatan Rata-rata (2011 ke 2012)", f"+{growth:.1f}%")
+col2.metric("Musim dengan Rata-rata Terendah", lowest_season_name)
 
 season_yr_df['Tahun'] = season_yr_df['yr'].map({0: '2011', 1: '2012'})
 fig3, ax3 = plt.subplots(figsize=(16, 8))
-sns.barplot(
-    data=season_yr_df, x='season_label', y='cnt', 
-    hue='Tahun', palette=["#D3D3D3", "#90CAF9"], ax=ax3
-)
-ax3.set_title("Total Penyewaan per Musim (Perbandingan Tahun)", fontsize=20)
+sns.barplot(data=season_yr_df, x='season_label', y='cnt', hue='Tahun', palette=["#D3D3D3", "#90CAF9"], ax=ax3)
+ax3.set_title("Rata-rata Penyewaan Harian per Musim", fontsize=20)
 ax3.set_xlabel("Musim", fontsize=15)
-ax3.set_ylabel("Total Penyewaan", fontsize=15)
-ax3.tick_params(axis='x', labelsize=12)
-ax3.tick_params(axis='y', labelsize=12)
+ax3.set_ylabel("Rata-rata Penyewaan Harian", fontsize=15)
 st.pyplot(fig3)
 
-st.info(f"**Rekomendasi Bisnis:** Mengingat pertumbuhan total penyewaan terus meningkat, perbaikan dan inspeksi armada massal sebaiknya difokuskan pada musim **{lowest_season_name}** karena memiliki volume peminjaman terendah. Ini akan menekan potensi *lost revenue*.")
+st.info(f"**Bahan Pertimbangan:** Data historis menunjukkan musim **{lowest_season_name}** memiliki rata-rata penyewaan terendah, sehingga waktu ini dapat dipertimbangkan sebagai periode perbaikan armada untuk meminimalisasi kendala ketersediaan.")
 
 st.caption('Dashboard oleh Fajar Nurhidayat')
