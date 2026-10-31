@@ -11,6 +11,8 @@ file_path = os.path.join(current_dir, "hour.csv")
 # Mengatur style seaborn
 sns.set_theme(style='darkgrid')
 
+
+
 # Helper Functions
 def create_daily_sharing_df(df):
     return df.groupby(by='dteday').agg({
@@ -35,8 +37,8 @@ def create_weather_impact_df(df):
     return df_copy.groupby(by=['weather_group'])[['casual', 'registered', 'cnt']].mean().reset_index()
 
 def create_season_yr_df(df):
-    # Menggunakan mean (rata-rata harian) sesuai permintaan reviewer
-    return df.groupby(by=['yr', 'season_label'])['cnt'].mean().reset_index()
+    daily_sum = df.groupby(by=['dteday', 'yr', 'season_label'])['cnt'].sum().reset_index()
+    return daily_sum.groupby(by=['yr', 'season_label'])['cnt'].mean().reset_index()
 
 def get_lowest_season(df):
     daily_season = df.groupby(['dteday', 'season_label'])['cnt'].sum().reset_index()
@@ -117,7 +119,7 @@ plt.legend(title='Keterangan', labels=['Akhir Pekan/Libur', 'Hari Kerja'], fonts
 ax1.grid(True, linestyle='--', alpha=0.6)
 st.pyplot(fig1)
 
-st.info(f"**Bahan Pertimbangan:** Data historis menunjukkan jam puncak terjadi pada pukul {int(peak_workday)}:00 di hari kerja. Penjadwalan redistribusi armada dapat difokuskan sebelum jam tersebut.")
+st.info(f"**Bahan Pertimbangan:** Data historis menunjukkan jam puncak terjadi pada pukul {int(peak_workday)}:00 di hari kerja dan pukul {int(peak_weekend)}:00 pada hari libur. Penjadwalan redistribusi armada dapat difokuskan sebelum jam tersebut.")
 st.divider()
 
 # -----------------------------------------------------------
