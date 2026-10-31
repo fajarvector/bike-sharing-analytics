@@ -3,6 +3,17 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import streamlit as st
 
+import os
+import pandas as pd
+
+# Dapatkan lokasi direktori tempat file dashboard.py berada
+current_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Gabungkan lokasi direktori tersebut dengan nama file CSV
+file_path = os.path.join(current_dir, "hour.csv")
+
+# Baca file CSV menggunakan path yang sudah digabungkan
+
 # Mengatur style seaborn
 sns.set_theme(style='darkgrid')
 
